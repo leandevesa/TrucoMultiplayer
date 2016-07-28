@@ -17,9 +17,14 @@
 </html>
 
 <script>
+    // Init
     var renderer = new Renderer();
     var socket = io();
 
+    (function() {
+        renderer.mensajeCentro("Esperando otro jugador...");
+    })();
+    // --------------------------------------------------------------
     socket.on('recibirMisCartas',function(cartas) {
 	    renderer.mensajeCentro('');
 	    renderer.dibujarMisCartas(cartas);

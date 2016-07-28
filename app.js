@@ -1,7 +1,9 @@
 // Logic vars
 var Truco = require('Truco');
-var nrJugadores = 0;
-var partidaTruco;
+var Jugador = require('Jugador');
+var jugadoresEsperando = [];
+var jugadoresJugando = [];
+var partidas = [];
 // Initial vars
 var express = require('express');
 var app = express();
@@ -10,7 +12,6 @@ var serv = require('http').Server(app);
 var root = '/client';
 var io;
 var SOCKET_LIST = [];
-var JUGADORES = [];
 
 configurarApp();
 abrirServidor(2000);
@@ -19,52 +20,57 @@ io.sockets.on('connection', function(socket){
     socket.id = Math.random();
     SOCKET_LIST[socket.id] = socket;
 
-    nrJugadores++;
-    JUGADORES[nrJugadores] = socket;
+    var unJugador = new Jugador.crear(socket.id);
+    jugadoresEsperando.push(unJugador);
 
-    console.log("Jugador " + nrJugadores + " conectado");
+    console.log("Jugador " + jugadoresEsperando.length + " conectado");
 
-    if (nrJugadores == 2) {
-        empezarPartida();
-    } else {
-        var data = {
-            mensaje: 'Esperando al otro jugador...'
-        }
-        socket.emit('mensajeCentro',data);
+    if (jugadoresEsperando.length > 1) {
+
+        var cantJugadores = 2;
+        var jugadoresPartida = jugadoresEsperando.splice(0, cantJugadores);
+        
+        empezarPartida(jugadoresPartida);
     }
 
     socket.on("disconnect",function() {
-        nrJugadores--;
-
-    console.log("Jugador " + nrJugadores + " conectado");
+        // Si el jugador que se desconecto estaba en medio de una partida ->
+        // Le aviso a todos los jugadores de esa partida que el jugador abandono
+        if (jugadoresJugando[socket.id]) {
+            var partida = jugadoresJugando[socket.id].partida;
+            var jugadoresPartida = partida.getJugadores();
+            var data = {
+                mensaje: "Otro jugador ha abandonado la partida"
+            }
+            for (var i = 0; i < jugadoresPartida.length; i++) {
+                var id = jugadoresPartida[i].id;
+                SOCKET_LIST[id].emit('mensajeCentro',data);
+            }
+        }
         delete SOCKET_LIST[socket.id];
     });
 });
 
-function empezarPartida() {
-    partidaTruco = new Truco.crear();
-    partidaTruco.empezar();
+function empezarPartida(jugadoresPartida) {
+    var id, cartas;
 
-    var cartas = partidaTruco.getCartasJugador1();
+    partidaTruco = new Truco.crear(jugadoresPartida);
 
-    console.log(' ');
-    console.log('Cartas jugador 1:')
-    for (var i = 0; i < cartas.length; i++) {
-        console.log(cartas[i].numero + ' ' + cartas[i].palo);
+    // Le asigno a todos los jugadores, la partida en la que estaran
+    for (var i = 0; i < jugadoresPartida.length; i++) {
+        var unJugador = jugadoresPartida[i];
+        unJugador.partida = partidaTruco;
+        jugadoresJugando[unJugador.id] = unJugador;
     }
-    enviarMisCartas(1, cartas);
-    cartas = partidaTruco.getCartasJugador2();
-    console.log(' ');
-    console.log('Cartas jugador 2:')
-    for (var i = 0; i < cartas.length; i++) {
-        console.log(cartas[i].numero + ' ' + cartas[i].palo);
-    }
-    enviarMisCartas(2, cartas);
-}
+    
+    partidaTruco.nuevaPartida();
 
-function enviarMisCartas(numeroJugador, cartas) {
-    var socket = JUGADORES[numeroJugador];
-    socket.emit('recibirMisCartas',cartas);
+    // Renderizo las cartas
+    for (var i = 0; i < jugadoresPartida.length; i++) {
+        cartas = jugadoresPartida[i].cartas;
+        id = jugadoresPartida[i].id;
+        SOCKET_LIST[id].emit('recibirMisCartas',cartas);
+    }
 }
 
 function configurarApp() {
